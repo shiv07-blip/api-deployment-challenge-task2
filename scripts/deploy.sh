@@ -1,5 +1,7 @@
 #!/bin/bash
 
+set -e
+
 echo "Building image..."
 
 sudo docker build -t sample-api:new .
@@ -7,31 +9,37 @@ sudo docker build -t sample-api:new .
 echo "Starting new container..."
 
 sudo docker run -d \
---name sample-api-new \
--p 5011:5010 \
-sample-api:new
+  --name sample-api-new \
+  -p 5012:5010 \
+  --log-driver json-file \
+  --log-opt max-size=10m \
+  --log-opt max-file=3 \
+  sample-api:new
 
 echo "Waiting for health check..."
 
-sleep 10
+for i in {1..30}
+do
+    if curl -f http://localhost:5012 >/dev/null 2>&1
+    then
+        echo "Health check passed"
+        break
+    fi
 
-curl -f http://localhost:5011
+    sleep 1
+done
 
-if [ $? -ne 0 ]; then
+if ! curl -f http://localhost:5012 >/dev/null 2>&1
+then
+    echo "Health check failed"
 
-  echo "Deployment failed"
+    sudo docker rm -f sample-api-new
 
-  sudo docker rm -f sample-api-new
-
-  exit 1
-
+    exit 1
 fi
-
-echo "Replacing old container..."
 
 sudo docker rm -f sample-api || true
 
 sudo docker rename sample-api-new sample-api
 
 echo "Deployment successful"
-
